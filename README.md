@@ -1,4 +1,4 @@
-# Auto Insighter (ProdInsight)
+# Auto Product Insights Generator (ProdInsight)
 
 Auto Insighter is a full-stack product insights application. Users submit a product name (and optionally a document) through a React chat UI. A Django REST API stores the request, launches an AI pipeline in the background, scrapes public reviews from the web, and returns structured analysis—pros, cons, rating, places to fix, and recommendations—powered by Ollama and LangGraph.
 
