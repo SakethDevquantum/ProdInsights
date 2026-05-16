@@ -1,0 +1,32 @@
+# Django API (apps/api)
+Django>=5.2,<6
+djangorestframework
+django-cors-headers
+psycopg2-binary
+
+# Review scraper (apps/scrapper)
+requests
+beautifulsoup4
+ddgs
+
+# LangChain agent pipeline (models/agents) and Chats model imports
+langgraph
+langchain-chroma
+langchain-ollama
+langchain-core
+langchain-community
+langchain-text-splitters
+pydantic
+python-dotenv
+pypdf
+docx2txt
+
+# Agent notebook imports (models/agents/model.py)
+transformers
+peft
+huggingface_hub
+
+# Sentiment model training (models/trained)
+torch
+datasets
+tqdm
