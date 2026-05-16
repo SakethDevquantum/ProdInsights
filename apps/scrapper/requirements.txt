@@ -1,0 +1,11 @@
+requests
+beautifulsoup4
+ddgs
+praw
+typer
+loguru
+codetiming
+pyyaml
+tqdm
+pretty_errors
+python-dotenv

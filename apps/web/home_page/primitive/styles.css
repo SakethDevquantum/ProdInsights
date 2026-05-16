@@ -1,0 +1,50 @@
+body{
+    margin: 0;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size:cover;
+    background-attachment: fixed;
+    box-sizing: border-box;
+    background-color: #f6ecde;
+}
+
+#textbox{
+    display: flex;
+    justify-content: center;
+    padding-top: 5vh;
+}
+
+#chatInput{
+    border: 100px;
+    border: black;
+    border-width: 10px;
+    border-radius: 100px;
+    width: 800px;
+    text-align: center;
+    padding: 10px;
+    background-color: rgb(250, 209, 160);
+}
+
+#chatArea{
+    min-height: 500px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+h1{
+    text-align: center;
+}
+
+#profileButton{
+    padding: 30px;
+    margin-left: 1400px;
+    background-color: burlywood;
+    cursor: pointer;
+    border-style: solid;
+}
+
+#profileButton:hover{
+    transition: 0.3s ease;
+    background-color: chocolate;
+    padding: 35px;
+}
