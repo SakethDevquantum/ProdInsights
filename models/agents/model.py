@@ -6,7 +6,9 @@ from huggingface_hub import login
 from langgraph.graph import StateGraph, START, END
 from langchain_chroma import Chroma
 from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_core.documents import Document
@@ -19,7 +21,9 @@ from asgiref.sync import sync_to_async
 import os, sys, threading, json, django, asyncio
 
 # %%
-model=ChatOllama(model=' ')
+#model=ChatOllama(model='llama3.1')
+
+model=ChatBedrockConverse(model_id="meta.llama3-8b-instruct-v1:0",region_name="ap-south-1")
 
 # %%
 class InputModel(BaseModel):
@@ -35,7 +39,7 @@ class ResponseModel(BaseModel):
 # %%
 class StateSchema(TypedDict):
     raw_reviews:Optional[str]
-    doc_text:Optional[str]=""
+    doc_text:Optional[str]
     product_name:Optional[str]
     flaws:Optional[List[str]]
     strengths:Optional[List[str]]
@@ -45,33 +49,33 @@ class StateSchema(TypedDict):
     recommendations:Optional[List[str]]
 
 # %%
-vector_stores=Chroma(collection_name="model_collections", embedding_function=OllamaEmbeddings(model=" "), persist_directory='vector_stores')
-model=ChatOllama(model=" ")
+# vector_stores=Chroma(collection_name="model_collections", embedding_function=OllamaEmbeddings(model="llama3.1"), persist_directory='vector_stores')
+# model=ChatOllama(model="llama3.1")
 
-# %%
-data_folder=r'D:\SAKETH\Auto_insighter\project\project2\apps\api\app\myApp\Cache'
-doc_text=''
-files=os.listdir(data_folder)
-if(len(files)==1):
-    file=files[0]
-    print(file)
-    loader=None
-    if(file.endswith(".pdf")):
-        loader=PyPDFLoader(f'{data_folder}/{file}')
-    elif(file.endswith(".docx")):
-        loader=Docx2txtLoader(f'{data_folder}/{file}')
-    elif(file.endswith(".txt")):
-        loader=TextLoader(f'{data_folder}/{file}')
-    if loader is not None:
-        docs=loader.load()
-        doc_text="\n".join(doc.page_content for doc in docs)
+# # %%
+# data_folder=r'D:\SAKETH\Auto_insighter\project\project2\apps\api\app\myApp\Cache'
+# doc_text=''
+# files=os.listdir(data_folder)
+# if(len(files)==1):
+#     file=files[0]
+#     print(file)
+#     loader=None
+#     if(file.endswith(".pdf")):
+#         loader=PyPDFLoader(f'{data_folder}/{file}')
+#     elif(file.endswith(".docx")):
+#         loader=Docx2txtLoader(f'{data_folder}/{file}')
+#     elif(file.endswith(".txt")):
+#         loader=TextLoader(f'{data_folder}/{file}')
+#     if loader is not None:
+#         docs=loader.load()
+#         doc_text="\n".join(doc.page_content for doc in docs)
 
 # %%
 def validate(schema:StateSchema):
-    llm=model.with_structured_output(InputModel)
+    parser = PydanticOutputParser(pydantic_object=InputModel)
     reviews_text = schema['raw_reviews'][:14000]
     
-    response=llm.invoke(
+    response_msg=model.invoke(
         f"""TASK: Extract product information from customer reviews.
 
 PRODUCT: {schema['product_name']}
@@ -85,11 +89,20 @@ INSTRUCTIONS:
 3. Extract STRENGTHS - what customers liked (actual benefits mentioned)
 4. Extract RATING - the overall sentiment rating 0-5 (0=very bad, 5=excellent)
 5. USE FORMAL TONE ONLY AND GIVE RESPONSES IN A RESPECTFUL AND DECENT MANNER
+6. THIS IS MOST IMPORTANT GENERATE THE FLAWS/STRENGTHS/RATING ONLY ABOUT THE PRODUCT THAT IS MENTIONED HERE, DO NOT GENERATE ANY OTHER INFORMATION WHICH INCLUDES ("SIGHT OWNER HIDES WEB PAGE DESCRIPTION") OR SUCH LOGS GENERATED AS YOU ARE GENERATING FROM THE WEB SCRAPED CONTENT
 
 Focus ONLY on what is actually mentioned in the reviews. Do not make up information.
 If a field is not mentioned, leave it empty.
+
+{parser.get_format_instructions()}
 """
     )
+    try:
+        response = parser.invoke(response_msg)
+    except Exception as e:
+        print(f"Parse error: {e}")
+        response = InputModel(flaws=None, strengths=None, overall_rating=None)
+        
     print(f"Validate response: {response}")
     schema['flaws']=response.flaws if response.flaws else ["No flaws seen"]
     schema['strengths']=response.strengths if response.strengths else ["The prduct has no strengths"]
@@ -98,15 +111,15 @@ If a field is not mentioned, leave it empty.
     return schema
 
 def fix(schema:StateSchema):
-    llm=model.with_structured_output(ResponseModel)
+    parser = PydanticOutputParser(pydantic_object=ResponseModel)
     prompt=f"""TASK: Generate solutions to fix product problems.
 
 PRODUCT: {schema.get('product_name')}
 
-THESE ARE THE FLAWS THAT THE PRODUCT HAS, USE THESE FLAWS TO DELIVER THE PLACES TO FIX AND IT SHOULD BE FROM THE FLAWS ONLY, THE "places_to_fix" must contain all the flaws that you will see below:
+THESE ARE THE FLAWS THAT THE PRODUCT HAS, USE THESE FLAWS TO DELIVER THE PLACES TO FIX AND IT SHOULD BE FROM THE FLAWS ONLY,MOST IMPORTANTLY THE FLAWS YOU GENERATE SHOULD BE ABOUT PRODUCT NOT FROM WEB SCRAPE ERRORS. THE "places_to_fix" must contain all the flaws that you will see below:
 {schema.get('flaws')}
 
-USE THE ABOVE FLAWS TO ALSO GIVE RECOMMENDATIONS ON WHAT TO DO TO FIX THE FLAWS AND THEY SHOULD BE REALISTIC
+USE THE ABOVE FLAWS TO ALSO GIVE RECOMMENDATIONS ON WHAT TO DO TO FIX THE FLAWS AND THEY SHOULD BE REALISTIC, THE RECOMMENDATION SHOULD ALSO BE ABOUT THE PRODUCT ONLY NOT THE WEB SCRAPE LOGS/ERRORS AS THE INFORMATION FROM WHICH YOU ARE GENERATING IS WEB SCRAPPING RESULT AND DONT MENTION IT
 
 POSITIVE ASPECTS TO MAINTAIN(STRENGTHS):
 {schema.get('strengths')}
@@ -119,12 +132,20 @@ INSTRUCTIONS:
 3. Focus on realistic solutions based on the problems mentioned based on what is asked,
 4. Address all those in a formal tone only.
 
-Generate fixes that directly address the listed problems."""
+Generate fixes that directly address the listed problems.
+
+{parser.get_format_instructions()}"""
     
-    response=llm.invoke(prompt)
+    response_msg=model.invoke(prompt)
+    try:
+        response = parser.invoke(response_msg)
+    except Exception as e:
+        print(f"Parse error: {e}")
+        response = ResponseModel(places_to_fix=None, Recommendations=None)
+        
     print(f"Fix response: {response}")
     schema['places_to_fix']=response.places_to_fix if response.places_to_fix else ["No place to fix, the product is just fine"]
-    schema['recommendations']=response.Recommendations if response.Recommendations else ["Not much recommendations are neccessary as the product is already heavily optimized"]
+    schema['recommendations']=response.Recommendations if response.Recommendations else ["Not much recommendations are neccessary as the product is already optimized"]
     return schema
 
 # %%
